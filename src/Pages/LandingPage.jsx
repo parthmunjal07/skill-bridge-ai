@@ -206,7 +206,7 @@ function Marquee() {
 }
 
 /* ─── Main ─────────────────────────────────────────────────────────────────── */
-export default function LandingPage() {
+export default function LandingPage({ onLoginClick }) {
   const [dragging, setDragging] = useState(false);
   const [tick, setTick] = useState(0);
 
@@ -265,7 +265,7 @@ export default function LandingPage() {
             ))}
           </div>
 
-          <button className="btn" style={{fontSize:20, padding:"8px 22px", background:"#FFAB00", boxShadow:"6px 6px 0 #000"}}>
+          <button className="btn" style={{fontSize:20, padding:"8px 22px", background:"#FFAB00", boxShadow:"6px 6px 0 #000"}} onClick={onLoginClick}>
             LOGIN
           </button>
         </nav>

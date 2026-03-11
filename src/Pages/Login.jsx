@@ -312,7 +312,7 @@ function DecoGraph() {
 }
 
 /* ─── Main ─────────────────────────────────────────────────────────────────── */
-export default function LoginPage() {
+export default function LoginPage({ onLoginSuccess }) {
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw]     = useState(false);
@@ -506,7 +506,7 @@ export default function LoginPage() {
                 </div>
 
                 {/* Submit */}
-                <button className="btn submit-btn">
+                <button className="btn submit-btn" onClick={onLoginSuccess}>
                   <span style={{fontSize:22}}>
                     {isLogin ? "LOGIN TO SKILLBRIDGE" : "CREATE MY ACCOUNT"}
                   </span>
