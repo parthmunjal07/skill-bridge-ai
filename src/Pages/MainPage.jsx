@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import dagre from "dagre";
 import {
   Zap, Send, Upload, Plus, Trash2, ChevronRight,
   MessageSquare, Bot, User, Paperclip, RotateCcw,
@@ -380,6 +381,34 @@ const TREE_EDGES_DATA = [
   ["s1","l1"],["s2","l2"],["s3","l3"],["s5","l4"],["s8","l5"],
 ];
 
+/* ─── Auto-Layout Engine (Dagre) ───────────────────────────────────────────── */
+const dagreGraph = new dagre.graphlib.Graph();
+dagreGraph.setDefaultEdgeLabel(() => ({}));
+
+const getLayoutedElements = (nodes, edges, direction = 'TB') => {
+  dagreGraph.setGraph({ rankdir: direction, ranksep: 80, nodesep: 50 });
+
+  nodes.forEach((node) => {
+    dagreGraph.setNode(node.id, { width: node.data.width || 120, height: node.data.height || 40 });
+  });
+
+  edges.forEach((edge) => {
+    dagreGraph.setEdge(edge.source, edge.target);
+  });
+
+  dagre.layout(dagreGraph);
+
+  nodes.forEach((node) => {
+    const nodeWithPosition = dagreGraph.node(node.id);
+    node.position = {
+      x: nodeWithPosition.x - (node.data.width || 120) / 2,
+      y: nodeWithPosition.y - (node.data.height || 40) / 2,
+    };
+  });
+
+  return { nodes, edges };
+};
+
 /* ─── Convert to React Flow format ─────────────────────────────────────────── */
 const RF_NODES = TREE_NODE_DATA.map(n => {
   const sz = NODE_SIZES[n.type];
@@ -650,17 +679,28 @@ export default function DashboardPage() {
       if (treeApiRef.current) {
         const { setNodes, setEdges, fitView } = treeApiRef.current;
 
-        // Map API nodes → React Flow node objects preserving Neobrutalist data shape
-        const rfNodes = (data.nodes ?? []).map(n => {
-          const sz = NODE_SIZES[n.type] ?? NODE_SIZES.skill;
+        // Map API nodes → React Flow node objects
+        const rawNodes = (data.nodes ?? []).map(n => {
+          const typeStr = n.type || "skill";
+          const sz = NODE_SIZES[typeStr] ?? NODE_SIZES.skill;
+
+          // Assign colors based on node type to keep it pretty
+          let bgColor = "#fff";
+          if (typeStr === "root") bgColor = "#FFAB00";
+          if (typeStr === "domain") bgColor = "#00E5FF";
+          if (typeStr === "leaf") bgColor = "#c8ff00";
+
+          // Safely extract the label, falling back appropriately
+          const nodeLabel = n.data?.label || n.label || String(n.id);
+
           return {
             id: String(n.id),
             type: "neobrutalist",
-            position: { x: n.x ?? 0, y: n.y ?? 0 },
+            position: { x: 0, y: 0 }, // Dagre will overwrite this!
             data: {
-              label:    n.label ?? n.id,
-              color:    n.color ?? "#fff",
-              nodeType: n.type  ?? "skill",
+              label:    nodeLabel,
+              color:    bgColor,
+              nodeType: typeStr,
               width:    sz.w,
               height:   sz.h,
             },
@@ -669,7 +709,7 @@ export default function DashboardPage() {
         });
 
         // Map API edges → React Flow edge objects
-        const rfEdges = (data.edges ?? []).map((edge, i) => ({
+        const rawEdges = (data.edges ?? []).map((edge, i) => ({
           id:     edge.id ?? `e-${edge.source}-${edge.target}-${i}`,
           source: String(edge.source),
           target: String(edge.target),
@@ -677,8 +717,11 @@ export default function DashboardPage() {
           style:  { stroke: "#000", strokeWidth: 3 },
         }));
 
-        setNodes(rfNodes);
-        setEdges(rfEdges);
+        // APPLY DAGRE AUTO-LAYOUT
+        const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(rawNodes, rawEdges);
+
+        setNodes(layoutedNodes);
+        setEdges(layoutedEdges);
 
         // Re-fit the viewport after a tick to let React Flow measure the new nodes
         setTimeout(() => fitView({ duration: 500, padding: 0.2 }), 50);
