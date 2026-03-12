@@ -3,8 +3,13 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
+import multer from 'multer';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const pdfParse = require('pdf-parse');
 
 dotenv.config();
+const upload = multer({ storage: multer.memoryStorage() });
 
 const app = express();
 app.use(cors());
@@ -63,15 +68,17 @@ const model = genAI.getGenerativeModel({
 });
 
 // The Single API Route
-app.post('/api/generate-tree', async (req, res) => {
+app.post('/api/generate-tree', upload.single('syllabus'), async (req, res) => {
   try {
-    const { syllabusText } = req.body;
-    
-    if (!syllabusText) {
-      return res.status(400).json({ error: "Syllabus text is required." });
+    if (!req.file) {
+      return res.status(400).json({ error: "Please upload a syllabus PDF." });
     }
 
-    console.log("Analyzing syllabus...");
+    console.log("Extracting text from PDF...");
+    const pdfData = await pdfParse(req.file.buffer);
+    const syllabusText = pdfData.text;
+
+    console.log("Analyzing syllabus with Gemini...");
 
     const prompt = `
       You are an expert Technical Curriculum Designer. Transform the following college syllabus text into an interactive roadmap mapped to modern industry skills.
@@ -86,13 +93,13 @@ app.post('/api/generate-tree', async (req, res) => {
 
     console.log("Tree generated successfully. Saving to Supabase...");
 
-    // Save to Database
+    // Save to Database (Skipping user_id for MVP speed)
     const { data, error } = await supabase
       .from('roadmaps')
       .insert([{ syllabus_text: syllabusText, skill_tree_json: generatedJson }])
       .select();
 
-    if (error) throw error;
+    if (error) console.error("Supabase Save Error:", error);
 
     // Send back to React
     res.status(200).json(generatedJson);
