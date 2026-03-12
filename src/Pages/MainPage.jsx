@@ -1,9 +1,21 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Zap, Send, Upload, Plus, Trash2, ChevronRight,
   MessageSquare, Bot, User, Paperclip, RotateCcw,
   ZoomIn, ZoomOut, Maximize2, Download
 } from "lucide-react";
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  useNodesState,
+  useEdgesState,
+  Handle,
+  Position,
+  useReactFlow,
+  ReactFlowProvider,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 
 /* ─── Styles ───────────────────────────────────────────────────────────────── */
 const STYLES = `
@@ -178,35 +190,6 @@ const STYLES = `
     position: relative;
     overflow: hidden;
     min-height: 0;
-    cursor: grab;
-  }
-  .tree-canvas:active { cursor: grabbing; }
-
-  /* node styles */
-  .tree-node {
-    position: absolute;
-    border: 3px solid #000;
-    padding: 8px 14px;
-    font-family: 'Bebas Neue', cursive;
-    font-size: 14px;
-    letter-spacing: .08em;
-    white-space: nowrap;
-    cursor: pointer;
-    transition: transform .1s, box-shadow .1s;
-    box-shadow: 4px 4px 0 0 #000;
-    user-select: none;
-  }
-  .tree-node:hover { transform: translate(-2px,-2px); box-shadow: 6px 6px 0 0 #000; }
-  .tree-node.root  { font-size: 17px; letter-spacing: .1em; }
-
-  /* zoom controls */
-  .zoom-controls {
-    position: absolute;
-    bottom: 16px;
-    right: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
   }
 
   /* tree toolbar */
@@ -257,13 +240,91 @@ const STYLES = `
   /* status dot */
   .dot-live { width:8px; height:8px; border-radius:50%; background:#00E5FF; border:2px solid #000; animation:npulse 1.5s ease-in-out infinite; display:inline-block; }
 
-  /* SVG connector lines */
-  .connector-svg {
-    position: absolute;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    pointer-events: none;
-    overflow: visible;
+  /* ── React Flow overrides ── */
+  .react-flow__controls {
+    border: 3px solid #000 !important;
+    box-shadow: 4px 4px 0 0 #000 !important;
+    border-radius: 0 !important;
+    overflow: hidden;
+  }
+  .react-flow__controls-button {
+    border: none !important;
+    border-bottom: 2px solid #000 !important;
+    background: #f4f4f0 !important;
+    border-radius: 0 !important;
+    width: 28px !important;
+    height: 28px !important;
+    transition: background .1s !important;
+  }
+  .react-flow__controls-button:hover {
+    background: #FFAB00 !important;
+  }
+  .react-flow__controls-button:last-child {
+    border-bottom: none !important;
+  }
+  .react-flow__controls-button svg {
+    fill: #000 !important;
+    max-width: 12px !important;
+  }
+  .react-flow__background {
+    background-color: #f4f4f0 !important;
+  }
+
+  /* Neobrutalist node */
+  .neo-node {
+    border: 3px solid #000;
+    padding: 8px 14px;
+    font-family: 'Bebas Neue', cursive;
+    letter-spacing: .08em;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: transform .1s, box-shadow .1s;
+    box-shadow: 4px 4px 0 0 #000;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .neo-node:hover {
+    transform: translate(-2px,-2px);
+    box-shadow: 6px 6px 0 0 #000;
+  }
+  .neo-node.selected {
+    border: 3px solid #FF6B9D !important;
+    box-shadow: 5px 5px 0 0 #FF6B9D !important;
+  }
+  .react-flow__node { padding: 0 !important; border: none !important; border-radius: 0 !important; background: none !important; box-shadow: none !important; }
+  .react-flow__node.selected .neo-node { border-color: #FF6B9D !important; box-shadow: 5px 5px 0 0 #FF6B9D !important; }
+  .react-flow__handle { opacity: 0 !important; }
+  .react-flow__edge-path { stroke: #000 !important; stroke-width: 3 !important; }
+  .react-flow__edge.selected .react-flow__edge-path { stroke: #FF6B9D !important; }
+
+  /* ── Mobile responsiveness ── */
+  @media (max-width: 1024px) {
+    html, body { overflow: auto; height: auto; }
+    .db-root { height: auto; overflow: auto; min-height: 100vh; }
+    .db-workspace {
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+    .panel-left {
+      min-height: 600px;
+      border-right: none;
+      border-bottom: 4px solid #000;
+    }
+    .panel-mid {
+      min-height: 600px;
+      border-right: none;
+      border-bottom: 4px solid #000;
+    }
+    .panel-right {
+      min-height: 600px;
+    }
+    .db-nav {
+      flex-wrap: wrap;
+      gap: 10px;
+    }
   }
 `;
 
@@ -276,8 +337,10 @@ const CHAT_HISTORY = [
   { id:5, title:"DevOps Basics",   subtitle:"9 skills extracted",  time:"Fri" },
 ];
 
+const INTRO_MESSAGE = { id:1, role:"ai", text:"Hey! Upload your syllabus PDF and I'll extract a skill roadmap for you. Drop it below or paste the course outline directly." };
+
 const INIT_MESSAGES = [
-  { id:1, role:"ai",   text:"Hey! Upload your syllabus PDF and I'll extract a skill roadmap for you. Drop it below or paste the course outline directly." },
+  INTRO_MESSAGE,
   { id:2, role:"user", text:"Here's my CS101 syllabus. Can you extract the key skills I need to learn?" },
   { id:3, role:"ai",   text:"Analysed your syllabus. Found 12 real-world skills across 4 domains: Programming Fundamentals, Data Structures, Algorithms, and System Design. Generating your skill tree now →" },
   { id:4, role:"user", text:"Which skill should I learn first if I want to get a job fast?" },
@@ -285,14 +348,14 @@ const INIT_MESSAGES = [
 ];
 
 /* ─── Tree layout ──────────────────────────────────────────────────────────── */
-const TREE_NODES = [
+const NODE_SIZES = { root:{w:200,h:38}, domain:{w:148,h:32}, skill:{w:120,h:28}, leaf:{w:90,h:28} };
+
+const TREE_NODE_DATA = [
   { id:"root",  label:"CS101 SYLLABUS", x:310, y:30,  color:"#FFAB00", type:"root" },
-  // domain nodes
-  { id:"d1", label:"PROGRAMMING",   x:80,  y:130, color:"#00E5FF",  type:"domain" },
+  { id:"d1", label:"PROGRAMMING",    x:80,  y:130, color:"#00E5FF",  type:"domain" },
   { id:"d2", label:"DATA STRUCTURES",x:270, y:130, color:"#FF6B9D",  type:"domain" },
-  { id:"d3", label:"ALGORITHMS",    x:460, y:130, color:"#00E5FF",  type:"domain" },
-  { id:"d4", label:"SYSTEM DESIGN", x:620, y:130, color:"#c8ff00",  type:"domain" },
-  // skill nodes
+  { id:"d3", label:"ALGORITHMS",     x:460, y:130, color:"#00E5FF",  type:"domain" },
+  { id:"d4", label:"SYSTEM DESIGN",  x:620, y:130, color:"#c8ff00",  type:"domain" },
   { id:"s1", label:"JAVASCRIPT",  x:20,  y:250, color:"#fff", type:"skill" },
   { id:"s2", label:"GIT",         x:140, y:250, color:"#fff", type:"skill" },
   { id:"s3", label:"ARRAYS",      x:230, y:250, color:"#fff", type:"skill" },
@@ -301,7 +364,6 @@ const TREE_NODES = [
   { id:"s6", label:"BIG-O",       x:510, y:250, color:"#fff", type:"skill" },
   { id:"s7", label:"REST APIs",   x:590, y:250, color:"#fff", type:"skill" },
   { id:"s8", label:"DOCKER",      x:680, y:250, color:"#fff", type:"skill" },
-  // leaf nodes
   { id:"l1", label:"REACT",    x:20,  y:360, color:"#FFAB00", type:"leaf" },
   { id:"l2", label:"NODE.JS",  x:110, y:360, color:"#FFAB00", type:"leaf" },
   { id:"l3", label:"SQL",      x:260, y:360, color:"#FF6B9D", type:"leaf" },
@@ -309,7 +371,7 @@ const TREE_NODES = [
   { id:"l5", label:"AWS",      x:620, y:360, color:"#c8ff00", type:"leaf" },
 ];
 
-const TREE_EDGES = [
+const TREE_EDGES_DATA = [
   ["root","d1"],["root","d2"],["root","d3"],["root","d4"],
   ["d1","s1"],["d1","s2"],
   ["d2","s3"],["d2","s4"],
@@ -318,55 +380,186 @@ const TREE_EDGES = [
   ["s1","l1"],["s2","l2"],["s3","l3"],["s5","l4"],["s8","l5"],
 ];
 
-const NODE_SIZES = { root:{w:200,h:38}, domain:{w:148,h:32}, skill:{w:120,h:28}, leaf:{w:90,h:28} };
+/* ─── Convert to React Flow format ─────────────────────────────────────────── */
+const RF_NODES = TREE_NODE_DATA.map(n => {
+  const sz = NODE_SIZES[n.type];
+  return {
+    id: n.id,
+    type: "neobrutalist",
+    position: { x: n.x, y: n.y },
+    data: {
+      label: n.label,
+      color: n.color,
+      nodeType: n.type,
+      width: sz.w,
+      height: sz.h,
+    },
+    style: { width: sz.w, height: sz.h },
+  };
+});
 
-/* ─── SVG edges ────────────────────────────────────────────────────────────── */
-function TreeEdges({ nodes, edges, scale, pan }) {
+const RF_EDGES = TREE_EDGES_DATA.map(([source, target], i) => ({
+  id: `e-${source}-${target}`,
+  source,
+  target,
+  type: "smoothstep",
+  style: { stroke: "#000", strokeWidth: 3 },
+}));
+
+/* ─── Neobrutalist Node Component ───────────────────────────────────────────── */
+function NeobrutalistNode({ data, selected }) {
+  const fontSize = data.nodeType === "root" ? 15 : data.nodeType === "domain" ? 13 : 11;
   return (
-    <svg className="connector-svg">
-      <g transform={`translate(${pan.x},${pan.y}) scale(${scale})`}>
-        {edges.map(([aId,bId],i)=>{
-          const a = nodes.find(n=>n.id===aId);
-          const b = nodes.find(n=>n.id===bId);
-          const as = NODE_SIZES[a.type]; const bs = NODE_SIZES[b.type];
-          const ax = a.x + as.w/2, ay = a.y + as.h;
-          const bx = b.x + bs.w/2, by = b.y;
-          const my = (ay+by)/2;
-          return (
-            <path
-              key={i}
-              d={`M${ax},${ay} C${ax},${my} ${bx},${my} ${bx},${by}`}
-              fill="none"
-              stroke="#000"
-              strokeWidth="2"
-              strokeDasharray="5,3"
-            />
-          );
-        })}
-      </g>
-    </svg>
+    <div
+      className={`neo-node${selected ? " selected" : ""}`}
+      style={{
+        background: data.color,
+        width: data.width,
+        height: data.height,
+        fontSize,
+        border: selected ? "3px solid #FF6B9D" : "3px solid #000",
+        boxShadow: selected ? "5px 5px 0 0 #FF6B9D" : "4px 4px 0 0 #000",
+      }}
+    >
+      <Handle type="target" position={Position.Top} />
+      {data.label}
+      <Handle type="source" position={Position.Bottom} />
+    </div>
+  );
+}
+
+const nodeTypes = { neobrutalist: NeobrutalistNode };
+
+/* ─── Tree Panel Inner (needs ReactFlow context) ────────────────────────────── */
+function SkillTreePanel({ selectedNode, setSelectedNode }) {
+  const [nodes, , onNodesChange] = useNodesState(RF_NODES);
+  const [edges, , onEdgesChange] = useEdgesState(RF_EDGES);
+  const { fitView } = useReactFlow();
+
+  const onNodeClick = useCallback((_, node) => {
+    setSelectedNode(prev => prev === node.id ? null : node.id);
+  }, [setSelectedNode]);
+
+  const selectedNodeData = selectedNode
+    ? TREE_NODE_DATA.find(n => n.id === selectedNode)
+    : null;
+
+  return (
+    <div className="panel panel-right" style={{display:"flex", flexDirection:"column"}}>
+      {/* Tree toolbar */}
+      <div className="tree-toolbar">
+        <div style={{display:"flex", alignItems:"center", gap:8}}>
+          <div style={{width:10, height:10, background:"#000", border:"2px solid #000"}}/>
+          <span className="bb" style={{fontSize:18, letterSpacing:".08em"}}>SKILL TREE</span>
+          <span className="tag-pill" style={{borderColor:"#000", background:"rgba(0,0,0,.1)", color:"#000"}}>
+            {TREE_NODE_DATA.length} NODES
+          </span>
+        </div>
+        <div style={{display:"flex", gap:6}}>
+          <button
+            className="btn"
+            style={{padding:"4px 10px", fontSize:12, border:"2px solid #000", boxShadow:"2px 2px 0 #000", background:"#fff"}}
+            onClick={() => alert("Downloading roadmap JSON...")}
+          >
+            <Download size={13} strokeWidth={3}/> EXPORT
+          </button>
+          <button
+            className="btn"
+            style={{padding:"4px 10px", fontSize:12, border:"2px solid #000", boxShadow:"2px 2px 0 #000", background:"#fff"}}
+            onClick={() => fitView({ duration: 400 })}
+          >
+            <Maximize2 size={13} strokeWidth={3}/>
+          </button>
+        </div>
+      </div>
+
+      {/* Canvas */}
+      <div className="tree-canvas">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onNodeClick={onNodeClick}
+          nodeTypes={nodeTypes}
+          fitView
+          fitViewOptions={{ padding: 0.2 }}
+          minZoom={0.2}
+          maxZoom={2}
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background color="#c8c8c4" gap={40} size={1} />
+          <Controls position="bottom-right" showInteractive={false} />
+        </ReactFlow>
+
+        {/* Selected node tooltip */}
+        {selectedNodeData && (
+          <div style={{
+            position:"absolute", bottom:60, left:16,
+            border:"3px solid #000", background:"#fff", padding:"10px 14px",
+            boxShadow:"5px 5px 0 0 #000", maxWidth:220, zIndex:10,
+            pointerEvents: "none",
+          }}>
+            <div className="bb" style={{fontSize:18, marginBottom:4}}>{selectedNodeData.label}</div>
+            <p className="mno" style={{fontSize:11, fontWeight:600, color:"#555", lineHeight:1.5}}>
+              {selectedNodeData.type==="root"   && "Your uploaded syllabus. All skills branch from here."}
+              {selectedNodeData.type==="domain" && "A major skill domain extracted from your syllabus."}
+              {selectedNodeData.type==="skill"  && "A specific skill you need to learn in this domain."}
+              {selectedNodeData.type==="leaf"   && "Advanced skill unlocked after mastering prerequisites."}
+            </p>
+            <div style={{marginTop:8, display:"flex", gap:6}}>
+              <span className="tag-pill" style={{borderColor:"#000", background: selectedNodeData.color, color:"#000", fontSize:10}}>
+                {selectedNodeData.type.toUpperCase()}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Hint */}
+        <div style={{position:"absolute", top:12, left:12, zIndex:5, pointerEvents:"none"}}>
+          <span className="mno" style={{fontSize:10, fontWeight:700, color:"#aaa", letterSpacing:".1em"}}>
+            DRAG TO PAN · SCROLL TO ZOOM · CLICK NODE FOR INFO
+          </span>
+        </div>
+      </div>
+
+      {/* Tree legend */}
+      <div style={{flexShrink:0, borderTop:"4px solid #000", background:"#fff", padding:"8px 16px", display:"flex", gap:16, flexWrap:"wrap", alignItems:"center"}}>
+        <span className="mno" style={{fontSize:10, fontWeight:700, letterSpacing:".1em", color:"#888"}}>LEGEND:</span>
+        {[
+          {color:"#FFAB00",  label:"SYLLABUS ROOT"},
+          {color:"#00E5FF",  label:"DOMAIN"},
+          {color:"#fff",     label:"SKILL"},
+          {color:"#FF6B9D",  label:"ADVANCED"},
+        ].map(l=>(
+          <div key={l.label} style={{display:"flex", alignItems:"center", gap:6}}>
+            <div style={{width:14, height:14, background:l.color, border:"2px solid #000"}}/>
+            <span className="mno" style={{fontSize:10, fontWeight:700, letterSpacing:".08em"}}>{l.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
 /* ─── Main ─────────────────────────────────────────────────────────────────── */
 export default function DashboardPage() {
-  const [messages, setMessages]       = useState(INIT_MESSAGES);
-  const [input, setInput]             = useState("");
-  const [isTyping, setIsTyping]       = useState(false);
-  const [activeChat, setActiveChat]   = useState(1);
-  const [scale, setScale]             = useState(0.82);
-  const [pan, setPan]                 = useState({ x: 10, y: 20 });
-  const [dragging, setDragging]       = useState(false);
-  const [dragStart, setDragStart]     = useState(null);
+  const [messages, setMessages]         = useState(INIT_MESSAGES);
+  const [input, setInput]               = useState("");
+  const [isTyping, setIsTyping]         = useState(false);
+  const [activeChat, setActiveChat]     = useState(1);
   const [selectedNode, setSelectedNode] = useState(null);
-  const messagesEndRef                = useRef(null);
-  const textareaRef                   = useRef(null);
-  const canvasRef                     = useRef(null);
+  const [isUploading, setIsUploading]   = useState(false);
+
+  const messagesEndRef = useRef(null);
+  const textareaRef    = useRef(null);
+  const fileInputRef   = useRef(null);
 
   useEffect(()=>{
     messagesEndRef.current?.scrollIntoView({ behavior:"smooth" });
   },[messages, isTyping]);
 
+  /* ── Chat ── */
   function handleSend() {
     const txt = input.trim();
     if (!txt) return;
@@ -387,33 +580,40 @@ export default function DashboardPage() {
     if (e.key==="Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
   }
 
-  // canvas pan
-  function onMouseDown(e) {
-    if (e.target.closest(".tree-node")) return;
-    setDragging(true);
-    setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
-  }
-  function onMouseMove(e) {
-    if (!dragging || !dragStart) return;
-    setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
-  }
-  function onMouseUp() { setDragging(false); setDragStart(null); }
-
-  function onWheel(e) {
-    e.preventDefault();
-    setScale(s => Math.min(2, Math.max(0.3, s - e.deltaY * 0.001)));
+  /* ── New Chat ── */
+  function handleNewChat() {
+    setMessages([INTRO_MESSAGE]);
+    setSelectedNode(null);
   }
 
-  useEffect(()=>{
-    const el = canvasRef.current;
-    if (!el) return;
-    el.addEventListener("wheel", onWheel, { passive:false });
-    return ()=>el.removeEventListener("wheel", onWheel);
-  },[]);
+  /* ── File Upload ── */
+  function triggerFileInput() {
+    fileInputRef.current?.click();
+  }
+
+  function onFileChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    console.log("Uploaded file:", file.name);
+    setIsUploading(true);
+    setTimeout(() => setIsUploading(false), 2000);
+    // Reset so the same file can be re-selected
+    e.target.value = "";
+  }
 
   return (
     <>
       <style dangerouslySetInnerHTML={{__html: STYLES}}/>
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/pdf"
+        style={{display:"none"}}
+        onChange={onFileChange}
+      />
+
       <div className="db-root">
 
         {/* ── NAV ── */}
@@ -433,16 +633,24 @@ export default function DashboardPage() {
           <div style={{display:"flex", alignItems:"center", gap:10, background:"#fff", border:"3px solid #000", padding:"5px 14px", boxShadow:"3px 3px 0 #000"}}>
             <span className="dot-live"/>
             <span className="mno" style={{fontSize:11, fontWeight:700, letterSpacing:".1em"}}>
-              SESSION ACTIVE — CS101 SYLLABUS
+              {isUploading ? "UPLOADING PDF…" : "SESSION ACTIVE — CS101 SYLLABUS"}
             </span>
           </div>
 
           {/* Right actions */}
           <div style={{display:"flex", gap:10}}>
-            <button className="btn" style={{fontSize:14, padding:"6px 14px", background:"#f4f4f0", boxShadow:"3px 3px 0 #000"}}>
+            <button
+              className="btn"
+              style={{fontSize:14, padding:"6px 14px", background:"#f4f4f0", boxShadow:"3px 3px 0 #000"}}
+              onClick={handleNewChat}
+            >
               <Plus size={14} strokeWidth={3}/> NEW CHAT
             </button>
-            <button className="btn" style={{fontSize:14, padding:"6px 14px", background:"#FFAB00", boxShadow:"3px 3px 0 #000"}}>
+            <button
+              className="btn"
+              style={{fontSize:14, padding:"6px 14px", background:"#FFAB00", boxShadow:"3px 3px 0 #000"}}
+              onClick={triggerFileInput}
+            >
               <Upload size={14} strokeWidth={3}/> UPLOAD PDF
             </button>
           </div>
@@ -466,9 +674,10 @@ export default function DashboardPage() {
             </div>
 
             <div className="panel-body" style={{background:"#0a0a0a"}}>
-              {/* New chat CTA */}
+              {/* New session CTA */}
               <div
                 style={{borderBottom:"3px solid #1a1a1a", padding:"12px 16px", cursor:"pointer", display:"flex", alignItems:"center", gap:10, background:"#111"}}
+                onClick={handleNewChat}
                 onMouseEnter={e=>e.currentTarget.style.background="#1a1a1a"}
                 onMouseLeave={e=>e.currentTarget.style.background="#111"}
               >
@@ -504,7 +713,7 @@ export default function DashboardPage() {
 
               {/* Upload CTA */}
               <div style={{padding:"0 12px 16px"}}>
-                <div className="upload-prompt" style={{marginTop:16}}>
+                <div className="upload-prompt" style={{marginTop:16}} onClick={triggerFileInput}>
                   <Upload size={22} strokeWidth={2.5} color="#00E5FF"/>
                   <span className="mno" style={{fontSize:11, fontWeight:700, color:"#555", letterSpacing:".08em", lineHeight:1.5}}>
                     DROP A NEW SYLLABUS<br/>TO START A SESSION
@@ -528,7 +737,11 @@ export default function DashboardPage() {
                 <span className="tag-pill" style={{borderColor:"#000", color:"#000", background:"rgba(0,0,0,.08)"}}>
                   GPT-4o
                 </span>
-                <button className="btn" style={{padding:"3px 8px", fontSize:12, border:"2px solid #000", boxShadow:"2px 2px 0 #000"}}>
+                <button
+                  className="btn"
+                  style={{padding:"3px 8px", fontSize:12, border:"2px solid #000", boxShadow:"2px 2px 0 #000"}}
+                  onClick={handleNewChat}
+                >
                   <RotateCcw size={12} strokeWidth={3}/>
                 </button>
               </div>
@@ -604,7 +817,11 @@ export default function DashboardPage() {
 
             {/* Prompt bar */}
             <div className="prompt-bar">
-              <button className="btn" style={{padding:10, border:"3px solid #000", background:"#f4f4f0", boxShadow:"3px 3px 0 #000", flexShrink:0}}>
+              <button
+                className="btn"
+                style={{padding:10, border:"3px solid #000", background:"#f4f4f0", boxShadow:"3px 3px 0 #000", flexShrink:0}}
+                onClick={triggerFileInput}
+              >
                 <Paperclip size={16} strokeWidth={3}/>
               </button>
 
@@ -638,147 +855,14 @@ export default function DashboardPage() {
           </div>
 
           {/* ════════════════════════════════════════
-              COL 3 — TREE DIAGRAM
+              COL 3 — TREE DIAGRAM (React Flow)
           ════════════════════════════════════════ */}
-          <div className="panel panel-right" style={{display:"flex", flexDirection:"column"}}>
-            {/* Tree toolbar */}
-            <div className="tree-toolbar">
-              <div style={{display:"flex", alignItems:"center", gap:8}}>
-                <div style={{width:10, height:10, background:"#000", border:"2px solid #000"}}/>
-                <span className="bb" style={{fontSize:18, letterSpacing:".08em"}}>SKILL TREE</span>
-                <span className="tag-pill" style={{borderColor:"#000", background:"rgba(0,0,0,.1)", color:"#000"}}>
-                  {TREE_NODES.length} NODES
-                </span>
-              </div>
-              <div style={{display:"flex", gap:6}}>
-                <button className="btn" style={{padding:"4px 10px", fontSize:12, border:"2px solid #000", boxShadow:"2px 2px 0 #000", background:"#fff"}}>
-                  <Download size={13} strokeWidth={3}/> EXPORT
-                </button>
-                <button className="btn" style={{padding:"4px 10px", fontSize:12, border:"2px solid #000", boxShadow:"2px 2px 0 #000", background:"#fff"}}>
-                  <Maximize2 size={13} strokeWidth={3}/>
-                </button>
-              </div>
-            </div>
-
-            {/* Canvas */}
-            <div
-              className="tree-canvas"
-              ref={canvasRef}
-              onMouseDown={onMouseDown}
-              onMouseMove={onMouseMove}
-              onMouseUp={onMouseUp}
-              onMouseLeave={onMouseUp}
-            >
-              {/* SVG edges */}
-              <TreeEdges nodes={TREE_NODES} edges={TREE_EDGES} scale={scale} pan={pan}/>
-
-              {/* Nodes */}
-              <div style={{
-                position:"absolute", top:0, left:0,
-                transform:`translate(${pan.x}px,${pan.y}px) scale(${scale})`,
-                transformOrigin:"0 0",
-              }}>
-                {TREE_NODES.map(n=>{
-                  const sz = NODE_SIZES[n.type];
-                  const isSelected = selectedNode===n.id;
-                  return (
-                    <div
-                      key={n.id}
-                      className={`tree-node${n.type==="root"?" root":""}`}
-                      style={{
-                        left:n.x, top:n.y,
-                        width:sz.w, height:sz.h,
-                        background: n.color,
-                        border: isSelected ? "3px solid #FF6B9D" : "3px solid #000",
-                        boxShadow: isSelected ? "5px 5px 0 0 #FF6B9D" : "4px 4px 0 0 #000",
-                        display:"flex", alignItems:"center", justifyContent:"center",
-                        fontSize: n.type==="root" ? 15 : n.type==="domain" ? 13 : 11,
-                      }}
-                      onClick={()=>setSelectedNode(id=>id===n.id?null:n.id)}
-                    >
-                      {n.label}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Selected node tooltip */}
-              {selectedNode && (()=>{
-                const n = TREE_NODES.find(x=>x.id===selectedNode);
-                return (
-                  <div style={{
-                    position:"absolute", bottom:60, left:16,
-                    border:"3px solid #000", background:"#fff", padding:"10px 14px",
-                    boxShadow:"5px 5px 0 0 #000", maxWidth:220, zIndex:10,
-                  }}>
-                    <div className="bb" style={{fontSize:18, marginBottom:4}}>{n.label}</div>
-                    <p className="mno" style={{fontSize:11, fontWeight:600, color:"#555", lineHeight:1.5}}>
-                      {n.type==="root" && "Your uploaded syllabus. All skills branch from here."}
-                      {n.type==="domain" && "A major skill domain extracted from your syllabus."}
-                      {n.type==="skill" && "A specific skill you need to learn in this domain."}
-                      {n.type==="leaf" && "Advanced skill unlocked after mastering prerequisites."}
-                    </p>
-                    <div style={{marginTop:8, display:"flex", gap:6}}>
-                      <span className="tag-pill" style={{borderColor:"#000", background: n.color, color:"#000", fontSize:10}}>
-                        {n.type.toUpperCase()}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Zoom controls */}
-              <div className="zoom-controls">
-                <button
-                  className="btn"
-                  style={{padding:8, background:"#fff", border:"3px solid #000", boxShadow:"3px 3px 0 #000"}}
-                  onClick={()=>setScale(s=>Math.min(2,+(s+.15).toFixed(2)))}
-                >
-                  <ZoomIn size={15} strokeWidth={3}/>
-                </button>
-                <div style={{border:"3px solid #000", background:"#FFAB00", padding:"4px 8px", textAlign:"center"}}>
-                  <span className="bb" style={{fontSize:14}}>{Math.round(scale*100)}%</span>
-                </div>
-                <button
-                  className="btn"
-                  style={{padding:8, background:"#fff", border:"3px solid #000", boxShadow:"3px 3px 0 #000"}}
-                  onClick={()=>setScale(s=>Math.max(0.3,+(s-.15).toFixed(2)))}
-                >
-                  <ZoomOut size={15} strokeWidth={3}/>
-                </button>
-                <button
-                  className="btn"
-                  style={{padding:8, background:"#fff", border:"3px solid #000", boxShadow:"3px 3px 0 #000"}}
-                  onClick={()=>{ setScale(0.82); setPan({x:10,y:20}); }}
-                >
-                  <RotateCcw size={13} strokeWidth={3}/>
-                </button>
-              </div>
-
-              {/* Drag hint */}
-              <div style={{position:"absolute", top:12, left:12}}>
-                <span className="mno" style={{fontSize:10, fontWeight:700, color:"#aaa", letterSpacing:".1em"}}>
-                  DRAG TO PAN · SCROLL TO ZOOM · CLICK NODE FOR INFO
-                </span>
-              </div>
-            </div>
-
-            {/* Tree legend */}
-            <div style={{flexShrink:0, borderTop:"4px solid #000", background:"#fff", padding:"8px 16px", display:"flex", gap:16, flexWrap:"wrap", alignItems:"center"}}>
-              <span className="mno" style={{fontSize:10, fontWeight:700, letterSpacing:".1em", color:"#888"}}>LEGEND:</span>
-              {[
-                {color:"#FFAB00",  label:"SYLLABUS ROOT"},
-                {color:"#00E5FF",  label:"DOMAIN"},
-                {color:"#fff",     label:"SKILL"},
-                {color:"#FF6B9D",  label:"ADVANCED"},
-              ].map(l=>(
-                <div key={l.label} style={{display:"flex", alignItems:"center", gap:6}}>
-                  <div style={{width:14, height:14, background:l.color, border:"2px solid #000"}}/>
-                  <span className="mno" style={{fontSize:10, fontWeight:700, letterSpacing:".08em"}}>{l.label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          <ReactFlowProvider>
+            <SkillTreePanel
+              selectedNode={selectedNode}
+              setSelectedNode={setSelectedNode}
+            />
+          </ReactFlowProvider>
 
         </div>
       </div>
