@@ -431,17 +431,25 @@ function NeobrutalistNode({ data, selected }) {
 const nodeTypes = { neobrutalist: NeobrutalistNode };
 
 /* ─── Tree Panel Inner (needs ReactFlow context) ────────────────────────────── */
-function SkillTreePanel({ selectedNode, setSelectedNode }) {
-  const [nodes, , onNodesChange] = useNodesState(RF_NODES);
-  const [edges, , onEdgesChange] = useEdgesState(RF_EDGES);
+function SkillTreePanel({ selectedNode, setSelectedNode, onTreeUpdate }) {
+  const [nodes, setNodes, onNodesChange] = useNodesState(RF_NODES);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(RF_EDGES);
   const { fitView } = useReactFlow();
+
+  // Expose setNodes / setEdges / fitView to parent via callback ref pattern
+  useEffect(() => {
+    if (onTreeUpdate) {
+      onTreeUpdate({ setNodes, setEdges, fitView });
+    }
+  }, [onTreeUpdate, setNodes, setEdges, fitView]);
 
   const onNodeClick = useCallback((_, node) => {
     setSelectedNode(prev => prev === node.id ? null : node.id);
   }, [setSelectedNode]);
 
+  // Tooltip resolves from live nodes so it reflects API-updated data
   const selectedNodeData = selectedNode
-    ? TREE_NODE_DATA.find(n => n.id === selectedNode)
+    ? nodes.find(n => n.id === selectedNode)?.data ?? null
     : null;
 
   return (
@@ -452,7 +460,7 @@ function SkillTreePanel({ selectedNode, setSelectedNode }) {
           <div style={{width:10, height:10, background:"#000", border:"2px solid #000"}}/>
           <span className="bb" style={{fontSize:18, letterSpacing:".08em"}}>SKILL TREE</span>
           <span className="tag-pill" style={{borderColor:"#000", background:"rgba(0,0,0,.1)", color:"#000"}}>
-            {TREE_NODE_DATA.length} NODES
+            {nodes.length} NODES
           </span>
         </div>
         <div style={{display:"flex", gap:6}}>
@@ -502,14 +510,14 @@ function SkillTreePanel({ selectedNode, setSelectedNode }) {
           }}>
             <div className="bb" style={{fontSize:18, marginBottom:4}}>{selectedNodeData.label}</div>
             <p className="mno" style={{fontSize:11, fontWeight:600, color:"#555", lineHeight:1.5}}>
-              {selectedNodeData.type==="root"   && "Your uploaded syllabus. All skills branch from here."}
-              {selectedNodeData.type==="domain" && "A major skill domain extracted from your syllabus."}
-              {selectedNodeData.type==="skill"  && "A specific skill you need to learn in this domain."}
-              {selectedNodeData.type==="leaf"   && "Advanced skill unlocked after mastering prerequisites."}
+              {selectedNodeData.nodeType==="root"   && "Your uploaded syllabus. All skills branch from here."}
+              {selectedNodeData.nodeType==="domain" && "A major skill domain extracted from your syllabus."}
+              {selectedNodeData.nodeType==="skill"  && "A specific skill you need to learn in this domain."}
+              {selectedNodeData.nodeType==="leaf"   && "Advanced skill unlocked after mastering prerequisites."}
             </p>
             <div style={{marginTop:8, display:"flex", gap:6}}>
               <span className="tag-pill" style={{borderColor:"#000", background: selectedNodeData.color, color:"#000", fontSize:10}}>
-                {selectedNodeData.type.toUpperCase()}
+                {(selectedNodeData.nodeType ?? "node").toUpperCase()}
               </span>
             </div>
           </div>
@@ -550,10 +558,17 @@ export default function DashboardPage() {
   const [activeChat, setActiveChat]     = useState(1);
   const [selectedNode, setSelectedNode] = useState(null);
   const [isUploading, setIsUploading]   = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const messagesEndRef = useRef(null);
   const textareaRef    = useRef(null);
   const fileInputRef   = useRef(null);
+  // Holds { setNodes, setEdges, fitView } once SkillTreePanel mounts
+  const treeApiRef     = useRef(null);
+
+  const handleTreeUpdate = useCallback((api) => {
+    treeApiRef.current = api;
+  }, []);
 
   useEffect(()=>{
     messagesEndRef.current?.scrollIntoView({ behavior:"smooth" });
@@ -586,19 +601,115 @@ export default function DashboardPage() {
     setSelectedNode(null);
   }
 
-  /* ── File Upload ── */
+  /* ── File Upload → API ── */
   function triggerFileInput() {
     fileInputRef.current?.click();
   }
 
-  function onFileChange(e) {
+  async function onFileChange(e) {
     const file = e.target.files?.[0];
-    if (!file) return;
-    console.log("Uploaded file:", file.name);
-    setIsUploading(true);
-    setTimeout(() => setIsUploading(false), 2000);
-    // Reset so the same file can be re-selected
+    // Reset input immediately so the same file can be re-selected later
     e.target.value = "";
+    if (!file) return;
+
+    // ── Step 2: build multipart payload ──
+    const formData = new FormData();
+    formData.append("syllabus", file);
+
+    // ── Step 3: set loading state ──
+    setIsGenerating(true);
+    setIsUploading(true);
+
+    // ── Step 4: optimistic chat message ──
+    setMessages(m => [
+      ...m,
+      {
+        id: Date.now(),
+        role: "ai",
+        text: "Uploading and analyzing your syllabus... This usually takes 10-15 seconds.",
+      },
+    ]);
+
+    try {
+      // ── Step 5: POST multipart/form-data ──
+      const response = await fetch("http://localhost:5000/api/generate-tree", {
+        method: "POST",
+        body: formData,
+        // Do NOT set Content-Type manually — the browser sets the boundary automatically
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Server error ${response.status}: ${errText}`);
+      }
+
+      // ── Step 6: parse JSON ──
+      const data = await response.json();
+
+      // ── Step 7: update React Flow canvas ──
+      if (treeApiRef.current) {
+        const { setNodes, setEdges, fitView } = treeApiRef.current;
+
+        // Map API nodes → React Flow node objects preserving Neobrutalist data shape
+        const rfNodes = (data.nodes ?? []).map(n => {
+          const sz = NODE_SIZES[n.type] ?? NODE_SIZES.skill;
+          return {
+            id: String(n.id),
+            type: "neobrutalist",
+            position: { x: n.x ?? 0, y: n.y ?? 0 },
+            data: {
+              label:    n.label ?? n.id,
+              color:    n.color ?? "#fff",
+              nodeType: n.type  ?? "skill",
+              width:    sz.w,
+              height:   sz.h,
+            },
+            style: { width: sz.w, height: sz.h },
+          };
+        });
+
+        // Map API edges → React Flow edge objects
+        const rfEdges = (data.edges ?? []).map((edge, i) => ({
+          id:     edge.id ?? `e-${edge.source}-${edge.target}-${i}`,
+          source: String(edge.source),
+          target: String(edge.target),
+          type:   "smoothstep",
+          style:  { stroke: "#000", strokeWidth: 3 },
+        }));
+
+        setNodes(rfNodes);
+        setEdges(rfEdges);
+
+        // Re-fit the viewport after a tick to let React Flow measure the new nodes
+        setTimeout(() => fitView({ duration: 500, padding: 0.2 }), 50);
+      }
+
+      // ── Step 8: success message ──
+      setMessages(m => [
+        ...m,
+        {
+          id: Date.now() + 1,
+          role: "ai",
+          text: "Skill tree generated successfully! Explore the interactive roadmap on the right.",
+        },
+      ]);
+    } catch (err) {
+      console.error("Tree generation failed:", err);
+
+      // ── Step 10 (catch): push error into chat ──
+      setMessages(m => [
+        ...m,
+        {
+          id: Date.now() + 2,
+          role: "ai",
+          text: `⚠ Failed to generate skill tree: ${err.message}. Please check your connection and try again.`,
+        },
+      ]);
+    } finally {
+      // ── Step 9 / Step 10: always clear loading ──
+      setIsGenerating(false);
+      setIsUploading(false);
+    }
   }
 
   return (
@@ -633,7 +744,11 @@ export default function DashboardPage() {
           <div style={{display:"flex", alignItems:"center", gap:10, background:"#fff", border:"3px solid #000", padding:"5px 14px", boxShadow:"3px 3px 0 #000"}}>
             <span className="dot-live"/>
             <span className="mno" style={{fontSize:11, fontWeight:700, letterSpacing:".1em"}}>
-              {isUploading ? "UPLOADING PDF…" : "SESSION ACTIVE — CS101 SYLLABUS"}
+              {isGenerating
+                ? "ANALYZING SYLLABUS…"
+                : isUploading
+                  ? "UPLOADING PDF…"
+                  : "SESSION ACTIVE — CS101 SYLLABUS"}
             </span>
           </div>
 
@@ -641,17 +756,19 @@ export default function DashboardPage() {
           <div style={{display:"flex", gap:10}}>
             <button
               className="btn"
-              style={{fontSize:14, padding:"6px 14px", background:"#f4f4f0", boxShadow:"3px 3px 0 #000"}}
+              style={{fontSize:14, padding:"6px 14px", background:"#f4f4f0", boxShadow:"3px 3px 0 #000", opacity: isGenerating ? 0.45 : 1}}
               onClick={handleNewChat}
+              disabled={isGenerating}
             >
               <Plus size={14} strokeWidth={3}/> NEW CHAT
             </button>
             <button
               className="btn"
-              style={{fontSize:14, padding:"6px 14px", background:"#FFAB00", boxShadow:"3px 3px 0 #000"}}
+              style={{fontSize:14, padding:"6px 14px", background: isGenerating ? "#f4f4f0" : "#FFAB00", boxShadow:"3px 3px 0 #000", opacity: isGenerating ? 0.45 : 1}}
               onClick={triggerFileInput}
+              disabled={isGenerating}
             >
-              <Upload size={14} strokeWidth={3}/> UPLOAD PDF
+              <Upload size={14} strokeWidth={3}/> {isGenerating ? "PROCESSING…" : "UPLOAD PDF"}
             </button>
           </div>
         </nav>
@@ -676,9 +793,9 @@ export default function DashboardPage() {
             <div className="panel-body" style={{background:"#0a0a0a"}}>
               {/* New session CTA */}
               <div
-                style={{borderBottom:"3px solid #1a1a1a", padding:"12px 16px", cursor:"pointer", display:"flex", alignItems:"center", gap:10, background:"#111"}}
-                onClick={handleNewChat}
-                onMouseEnter={e=>e.currentTarget.style.background="#1a1a1a"}
+                style={{borderBottom:"3px solid #1a1a1a", padding:"12px 16px", cursor: isGenerating ? "not-allowed" : "pointer", display:"flex", alignItems:"center", gap:10, background:"#111", opacity: isGenerating ? 0.45 : 1}}
+                onClick={isGenerating ? undefined : handleNewChat}
+                onMouseEnter={e=>{ if (!isGenerating) e.currentTarget.style.background="#1a1a1a"; }}
                 onMouseLeave={e=>e.currentTarget.style.background="#111"}
               >
                 <div style={{width:28, height:28, border:"2px solid #00E5FF", display:"flex", alignItems:"center", justifyContent:"center", background:"transparent"}}>
@@ -713,7 +830,7 @@ export default function DashboardPage() {
 
               {/* Upload CTA */}
               <div style={{padding:"0 12px 16px"}}>
-                <div className="upload-prompt" style={{marginTop:16}} onClick={triggerFileInput}>
+                <div className="upload-prompt" style={{marginTop:16, opacity: isGenerating ? 0.45 : 1, cursor: isGenerating ? "not-allowed" : "pointer"}} onClick={isGenerating ? undefined : triggerFileInput}>
                   <Upload size={22} strokeWidth={2.5} color="#00E5FF"/>
                   <span className="mno" style={{fontSize:11, fontWeight:700, color:"#555", letterSpacing:".08em", lineHeight:1.5}}>
                     DROP A NEW SYLLABUS<br/>TO START A SESSION
@@ -861,6 +978,7 @@ export default function DashboardPage() {
             <SkillTreePanel
               selectedNode={selectedNode}
               setSelectedNode={setSelectedNode}
+              onTreeUpdate={handleTreeUpdate}
             />
           </ReactFlowProvider>
 
