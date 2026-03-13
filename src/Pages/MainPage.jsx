@@ -3,7 +3,7 @@ import dagre from "dagre";
 import {
   Zap, Send, Upload, Plus, Trash2, ChevronRight,
   MessageSquare, Bot, User, Paperclip, RotateCcw,
-  ZoomIn, ZoomOut, Maximize2, Download
+  ZoomIn, ZoomOut, Maximize2, Download, X, Lightbulb
 } from "lucide-react";
 import {
   ReactFlow,
@@ -277,7 +277,9 @@ const STYLES = `
     padding: 8px 14px;
     font-family: 'Bebas Neue', cursive;
     letter-spacing: .08em;
-    white-space: nowrap;
+    white-space: normal;
+    word-break: break-word;
+    text-align: center;
     cursor: pointer;
     transition: transform .1s, box-shadow .1s;
     box-shadow: 4px 4px 0 0 #000;
@@ -285,6 +287,8 @@ const STYLES = `
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-wrap: wrap;
+    line-height: 1.2;
   }
   .neo-node:hover {
     transform: translate(-2px,-2px);
@@ -299,6 +303,55 @@ const STYLES = `
   .react-flow__handle { opacity: 0 !important; }
   .react-flow__edge-path { stroke: #000 !important; stroke-width: 3 !important; }
   .react-flow__edge.selected .react-flow__edge-path { stroke: #FF6B9D !important; }
+
+  /* ── Skill Detail Panel ── */
+  .skill-detail-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 320px;
+    background: #fff;
+    border-left: 4px solid #000;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: slideIn .2s ease-out;
+  }
+  @keyframes slideIn {
+    from { transform: translateX(100%); }
+    to   { transform: translateX(0); }
+  }
+  .skill-detail-panel .detail-header {
+    flex-shrink: 0;
+    padding: 14px 16px;
+    border-bottom: 4px solid #000;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .skill-detail-panel .detail-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+  }
+  .skill-detail-panel .detail-body::-webkit-scrollbar { width: 5px; }
+  .skill-detail-panel .detail-body::-webkit-scrollbar-track { background: #f4f4f0; }
+  .skill-detail-panel .detail-body::-webkit-scrollbar-thumb { background: #000; }
+  .project-card {
+    border: 2px solid #000;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    background: #f4f4f0;
+    box-shadow: 3px 3px 0 0 #000;
+    transition: transform .08s, box-shadow .08s;
+  }
+  .project-card:hover {
+    transform: translate(-2px,-2px);
+    box-shadow: 5px 5px 0 0 #000;
+  }
 
   /* ── Mobile responsiveness ── */
   @media (max-width: 1024px) {
@@ -349,27 +402,63 @@ const INIT_MESSAGES = [
 ];
 
 /* ─── Tree layout ──────────────────────────────────────────────────────────── */
-const NODE_SIZES = { root:{w:200,h:38}, domain:{w:148,h:32}, skill:{w:120,h:28}, leaf:{w:90,h:28} };
+const NODE_SIZES = { root:{w:240,h:50}, domain:{w:200,h:44}, skill:{w:180,h:40}, leaf:{w:160,h:40} };
 
 const TREE_NODE_DATA = [
-  { id:"root",  label:"CS101 SYLLABUS", x:310, y:30,  color:"#FFAB00", type:"root" },
-  { id:"d1", label:"PROGRAMMING",    x:80,  y:130, color:"#00E5FF",  type:"domain" },
-  { id:"d2", label:"DATA STRUCTURES",x:270, y:130, color:"#FF6B9D",  type:"domain" },
-  { id:"d3", label:"ALGORITHMS",     x:460, y:130, color:"#00E5FF",  type:"domain" },
-  { id:"d4", label:"SYSTEM DESIGN",  x:620, y:130, color:"#c8ff00",  type:"domain" },
-  { id:"s1", label:"JAVASCRIPT",  x:20,  y:250, color:"#fff", type:"skill" },
-  { id:"s2", label:"GIT",         x:140, y:250, color:"#fff", type:"skill" },
-  { id:"s3", label:"ARRAYS",      x:230, y:250, color:"#fff", type:"skill" },
-  { id:"s4", label:"LINKED LIST", x:320, y:250, color:"#fff", type:"skill" },
-  { id:"s5", label:"SORTING",     x:410, y:250, color:"#fff", type:"skill" },
-  { id:"s6", label:"BIG-O",       x:510, y:250, color:"#fff", type:"skill" },
-  { id:"s7", label:"REST APIs",   x:590, y:250, color:"#fff", type:"skill" },
-  { id:"s8", label:"DOCKER",      x:680, y:250, color:"#fff", type:"skill" },
-  { id:"l1", label:"REACT",    x:20,  y:360, color:"#FFAB00", type:"leaf" },
-  { id:"l2", label:"NODE.JS",  x:110, y:360, color:"#FFAB00", type:"leaf" },
-  { id:"l3", label:"SQL",      x:260, y:360, color:"#FF6B9D", type:"leaf" },
-  { id:"l4", label:"GRAPHS",   x:360, y:360, color:"#00E5FF", type:"leaf" },
-  { id:"l5", label:"AWS",      x:620, y:360, color:"#c8ff00", type:"leaf" },
+  { id:"root",  label:"CS101 SYLLABUS", x:310, y:30,  color:"#FFAB00", type:"root",
+    description: "Your uploaded syllabus. All skills branch from here.",
+    projects: ["Complete the full roadmap to become job-ready"] },
+  { id:"d1", label:"PROGRAMMING",    x:80,  y:130, color:"#00E5FF",  type:"domain",
+    description: "Core programming concepts — the foundation of all software engineering.",
+    projects: ["Build a personal portfolio CLI tool", "Create a calculator with tests"] },
+  { id:"d2", label:"DATA STRUCTURES",x:270, y:130, color:"#FF6B9D",  type:"domain",
+    description: "How data is organized in memory — critical for writing efficient code.",
+    projects: ["Implement your own data structure library", "Visualize sorting algorithms"] },
+  { id:"d3", label:"ALGORITHMS",     x:460, y:130, color:"#00E5FF",  type:"domain",
+    description: "Problem-solving patterns used in every technical interview and production system.",
+    projects: ["Solve 50 LeetCode problems", "Build a pathfinding visualizer"] },
+  { id:"d4", label:"SYSTEM DESIGN",  x:620, y:130, color:"#c8ff00",  type:"domain",
+    description: "Designing scalable, reliable software systems — what separates juniors from seniors.",
+    projects: ["Design a URL shortener architecture", "Sketch a chat app system diagram"] },
+  { id:"s1", label:"JAVASCRIPT",  x:20,  y:250, color:"#fff", type:"skill",
+    description: "The language of the web. Used for frontend, backend, and everything in between.",
+    projects: ["Build a Random Color Generator to master DOM manipulation", "Create a Stopwatch App to learn event handling", "Make a Quiz App with score tracking"] },
+  { id:"s2", label:"GIT",         x:140, y:250, color:"#fff", type:"skill",
+    description: "Version control system used by every development team worldwide.",
+    projects: ["Contribute to an open source project", "Set up a branching strategy for a team project", "Create a git cheat sheet from practice"] },
+  { id:"s3", label:"ARRAYS",      x:230, y:250, color:"#fff", type:"skill",
+    description: "The most fundamental data structure — contiguous memory, O(1) access.",
+    projects: ["Build a dynamic to-do list with add/remove/filter", "Implement array sorting visualizer", "Create a leaderboard with live sorting"] },
+  { id:"s4", label:"LINKED LIST", x:320, y:250, color:"#fff", type:"skill",
+    description: "Pointer-based data structure. Foundation for stacks, queues, and more.",
+    projects: ["Build a music playlist (add, remove, next, prev)", "Implement an undo/redo system", "Create a browser history navigator"] },
+  { id:"s5", label:"SORTING",     x:410, y:250, color:"#fff", type:"skill",
+    description: "Organizing data efficiently. Bubble, merge, quick — each with trade-offs.",
+    projects: ["Build a sorting algorithm visualizer", "Compare sort speeds with benchmarks", "Implement a ranked leaderboard system"] },
+  { id:"s6", label:"BIG-O",       x:510, y:250, color:"#fff", type:"skill",
+    description: "Measuring algorithm efficiency. Essential for writing performant code.",
+    projects: ["Analyze your own code's time complexity", "Write a blog post comparing O(n) vs O(n²)", "Profile a slow function and optimize it"] },
+  { id:"s7", label:"REST APIs",   x:590, y:250, color:"#fff", type:"skill",
+    description: "The standard way frontend and backend communicate over HTTP.",
+    projects: ["Build a weather dashboard using a public API", "Create a CRUD API with Express.js", "Make a movie search app with OMDB API"] },
+  { id:"s8", label:"DOCKER",      x:680, y:250, color:"#fff", type:"skill",
+    description: "Containerization tool that makes apps portable and deployable anywhere.",
+    projects: ["Dockerize a Node.js app", "Set up a multi-container app with Docker Compose", "Deploy a container to a cloud service"] },
+  { id:"l1", label:"REACT",    x:20,  y:360, color:"#FFAB00", type:"leaf",
+    description: "Most popular UI library. Component-based, fast, and used by top companies.",
+    projects: ["Build a Pomodoro Timer with state management", "Create a GitHub profile viewer", "Make a real-time chat UI"] },
+  { id:"l2", label:"NODE.JS",  x:110, y:360, color:"#FFAB00", type:"leaf",
+    description: "Run JavaScript on the server. Powers APIs, CLIs, and full-stack apps.",
+    projects: ["Build a CLI note-taking app", "Create a REST API with authentication", "Make a real-time chat server with Socket.io"] },
+  { id:"l3", label:"SQL",      x:260, y:360, color:"#FF6B9D", type:"leaf",
+    description: "Query language for relational databases. Used everywhere from startups to banks.",
+    projects: ["Build an inventory management system", "Create complex queries on a sample dataset", "Design a normalized database schema"] },
+  { id:"l4", label:"GRAPHS",   x:360, y:360, color:"#00E5FF", type:"leaf",
+    description: "Nodes + edges. Used in social networks, maps, and recommendation engines.",
+    projects: ["Build a social network friend suggestion system", "Implement Dijkstra's shortest path", "Create a dependency resolver"] },
+  { id:"l5", label:"AWS",      x:620, y:360, color:"#c8ff00", type:"leaf",
+    description: "Leading cloud platform. Deploy, scale, and manage apps in production.",
+    projects: ["Deploy a static site to S3 + CloudFront", "Set up a serverless function with Lambda", "Create a CI/CD pipeline with CodePipeline"] },
 ];
 
 const TREE_EDGES_DATA = [
@@ -386,7 +475,7 @@ const dagreGraph = new dagre.graphlib.Graph();
 dagreGraph.setDefaultEdgeLabel(() => ({}));
 
 const getLayoutedElements = (nodes, edges, direction = 'TB') => {
-  dagreGraph.setGraph({ rankdir: direction, ranksep: 80, nodesep: 50 });
+  dagreGraph.setGraph({ rankdir: direction, ranksep: 120, nodesep: 70 });
 
   nodes.forEach((node) => {
     dagreGraph.setNode(node.id, { width: node.data.width || 120, height: node.data.height || 40 });
@@ -422,6 +511,8 @@ const RF_NODES = TREE_NODE_DATA.map(n => {
       nodeType: n.type,
       width: sz.w,
       height: sz.h,
+      description: n.description || "",
+      projects: n.projects || [],
     },
     style: { width: sz.w, height: sz.h },
   };
@@ -529,25 +620,66 @@ function SkillTreePanel({ selectedNode, setSelectedNode, onTreeUpdate }) {
           <Controls position="bottom-right" showInteractive={false} />
         </ReactFlow>
 
-        {/* Selected node tooltip */}
+        {/* Selected node detail panel */}
         {selectedNodeData && (
-          <div style={{
-            position:"absolute", bottom:60, left:16,
-            border:"3px solid #000", background:"#fff", padding:"10px 14px",
-            boxShadow:"5px 5px 0 0 #000", maxWidth:220, zIndex:10,
-            pointerEvents: "none",
-          }}>
-            <div className="bb" style={{fontSize:18, marginBottom:4}}>{selectedNodeData.label}</div>
-            <p className="mno" style={{fontSize:11, fontWeight:600, color:"#555", lineHeight:1.5}}>
-              {selectedNodeData.nodeType==="root"   && "Your uploaded syllabus. All skills branch from here."}
-              {selectedNodeData.nodeType==="domain" && "A major skill domain extracted from your syllabus."}
-              {selectedNodeData.nodeType==="skill"  && "A specific skill you need to learn in this domain."}
-              {selectedNodeData.nodeType==="leaf"   && "Advanced skill unlocked after mastering prerequisites."}
-            </p>
-            <div style={{marginTop:8, display:"flex", gap:6}}>
-              <span className="tag-pill" style={{borderColor:"#000", background: selectedNodeData.color, color:"#000", fontSize:10}}>
-                {(selectedNodeData.nodeType ?? "node").toUpperCase()}
-              </span>
+          <div className="skill-detail-panel">
+            <div className="detail-header" style={{background: selectedNodeData.color}}>
+              <div>
+                <div className="bb" style={{fontSize:22, lineHeight:1.1, marginBottom:6}}>{selectedNodeData.label}</div>
+                <span className="tag-pill" style={{borderColor:"#000", background:"rgba(0,0,0,.12)", color:"#000", fontSize:10}}>
+                  {(selectedNodeData.nodeType ?? "node").toUpperCase()}
+                </span>
+              </div>
+              <button
+                className="btn"
+                style={{padding:6, border:"2px solid #000", boxShadow:"2px 2px 0 #000", background:"#fff", flexShrink:0}}
+                onClick={() => setSelectedNode(null)}
+              >
+                <X size={14} strokeWidth={3}/>
+              </button>
+            </div>
+            <div className="detail-body">
+              {/* Description */}
+              <div style={{marginBottom:16}}>
+                <span className="mno" style={{fontSize:10, fontWeight:700, color:"#888", letterSpacing:".12em", display:"block", marginBottom:6}}>ABOUT THIS SKILL</span>
+                <p className="mno" style={{fontSize:12, fontWeight:600, color:"#333", lineHeight:1.7}}>
+                  {selectedNodeData.description || (
+                    selectedNodeData.nodeType === "root"   ? "Your uploaded syllabus. All skills branch from here." :
+                    selectedNodeData.nodeType === "domain" ? "A major skill domain extracted from your syllabus." :
+                    selectedNodeData.nodeType === "skill"  ? "A specific skill you need to learn in this domain." :
+                    "Advanced skill unlocked after mastering prerequisites."
+                  )}
+                </p>
+              </div>
+
+              {/* Project Ideas */}
+              {(selectedNodeData.projects?.length > 0) && (
+                <div>
+                  <div style={{display:"flex", alignItems:"center", gap:6, marginBottom:10}}>
+                    <Lightbulb size={14} strokeWidth={3} color="#FFAB00"/>
+                    <span className="mno" style={{fontSize:10, fontWeight:700, color:"#888", letterSpacing:".12em"}}>PRACTICE PROJECTS</span>
+                  </div>
+                  {selectedNodeData.projects.map((project, i) => (
+                    <div key={i} className="project-card">
+                      <div style={{display:"flex", alignItems:"flex-start", gap:8}}>
+                        <span className="bb" style={{fontSize:16, color:"#FFAB00", lineHeight:1, flexShrink:0, marginTop:1}}>{i + 1}.</span>
+                        <p className="mno" style={{fontSize:11, fontWeight:600, color:"#333", lineHeight:1.5, margin:0}}>
+                          {project}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* No projects fallback */}
+              {(!selectedNodeData.projects || selectedNodeData.projects.length === 0) && (
+                <div style={{border:"2px dashed #ccc", padding:"14px 12px", textAlign:"center"}}>
+                  <p className="mno" style={{fontSize:11, fontWeight:600, color:"#aaa", lineHeight:1.5}}>
+                    Upload a syllabus to get personalized project ideas for this skill.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -555,7 +687,7 @@ function SkillTreePanel({ selectedNode, setSelectedNode, onTreeUpdate }) {
         {/* Hint */}
         <div style={{position:"absolute", top:12, left:12, zIndex:5, pointerEvents:"none"}}>
           <span className="mno" style={{fontSize:10, fontWeight:700, color:"#aaa", letterSpacing:".1em"}}>
-            DRAG TO PAN · SCROLL TO ZOOM · CLICK NODE FOR INFO
+            DRAG TO PAN · SCROLL TO ZOOM · CLICK NODE FOR DETAILS
           </span>
         </div>
       </div>
@@ -703,6 +835,8 @@ export default function DashboardPage() {
               nodeType: typeStr,
               width:    sz.w,
               height:   sz.h,
+              description: n.data?.description || "",
+              projects:    n.data?.projects || [],
             },
             style: { width: sz.w, height: sz.h },
           };

@@ -34,10 +34,15 @@ const reactFlowSchema = {
           data: {
             type: SchemaType.OBJECT,
             properties: {
-              label: { type: SchemaType.STRING, description: "Uppercase concept name" },
-              description: { type: SchemaType.STRING, description: "Short explanation" }
+              label: { type: SchemaType.STRING, description: "Uppercase concept name, keep it SHORT (1-3 words)" },
+              description: { type: SchemaType.STRING, description: "1-2 sentence explanation of what this skill is and why it matters" },
+              projects: {
+                type: SchemaType.ARRAY,
+                items: { type: SchemaType.STRING, description: "A specific mini-project idea to practice this skill, e.g. 'Build a Random Color Generator to master DOM manipulation'" },
+                description: "2-3 hands-on project ideas to practice this skill"
+              }
             },
-            required: ["label"]
+            required: ["label", "description", "projects"]
           }
         },
         required: ["id", "type", "data"]
@@ -90,8 +95,18 @@ app.post('/api/generate-tree', upload.single('syllabus'), async (req, res) => {
     // 3. The prompt instruction
     const textPrompt = `
       You are an expert Technical Curriculum Designer. Read the attached college syllabus PDF.
-      Transform the academic concepts inside it into an interactive roadmap mapped to modern industry skills.
-      Limit the output to 8-12 nodes total to prevent UI clutter. Map theoretical concepts to specific modern tools (e.g., Graph Theory -> Neo4j).
+      Transform the academic concepts inside it into a DETAILED interactive skill roadmap mapped to modern industry skills.
+
+      RULES:
+      - Generate 20-30 nodes total for a comprehensive, granular tree.
+      - Use exactly these node types: root (1 node), domain (3-6 nodes), skill (8-15 nodes), leaf (5-10 nodes).
+      - Keep labels SHORT: 1-3 words max, all UPPERCASE.
+      - For EVERY node, write a 1-2 sentence "description" explaining what this skill is and why it matters in the real world.
+      - For skill and leaf nodes, provide 2-3 specific "projects" — concrete mini-project ideas a student can build to practice that skill.
+        Example projects: "Build a Random Color Generator to master DOM manipulation", "Create a CLI Todo App to learn file I/O and CRUD".
+      - For root and domain nodes, provide 1-2 broader project ideas.
+      - Map theoretical/academic concepts to specific modern tools and frameworks (e.g., Graph Theory -> Neo4j, Concurrency -> Go goroutines).
+      - Connect nodes with edges showing prerequisite relationships.
     `;
 
     // 4. Send BOTH the text prompt and the PDF file directly to the model
@@ -116,4 +131,4 @@ app.post('/api/generate-tree', upload.single('syllabus'), async (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 SkillBridge Backend running on port ${PORT}`));
+app.listen(PORT, () => console.log(`SkillBridge Backend running on port ${PORT}`));
