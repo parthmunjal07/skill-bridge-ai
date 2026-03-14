@@ -274,7 +274,7 @@ const STYLES = `
   /* Neobrutalist node */
   .neo-node {
     border: 3px solid #000;
-    padding: 8px 14px;
+    padding: 12px 18px;
     font-family: 'Bebas Neue', cursive;
     letter-spacing: .08em;
     white-space: normal;
@@ -288,7 +288,8 @@ const STYLES = `
     align-items: center;
     justify-content: center;
     flex-wrap: wrap;
-    line-height: 1.2;
+    line-height: 1.4;
+    text-transform: uppercase;
   }
   .neo-node:hover {
     transform: translate(-2px,-2px);
@@ -402,7 +403,7 @@ const INIT_MESSAGES = [
 ];
 
 /* ─── Tree layout ──────────────────────────────────────────────────────────── */
-const NODE_SIZES = { root:{w:240,h:50}, domain:{w:200,h:44}, skill:{w:180,h:40}, leaf:{w:160,h:40} };
+const NODE_SIZES = { root:{w:280,h:60}, domain:{w:220,h:50}, skill:{w:180,h:46}, leaf:{w:160,h:46} };
 
 const TREE_NODE_DATA = [
   { id:"root",  label:"CS101 SYLLABUS", x:310, y:30,  color:"#FFAB00", type:"root",
@@ -471,40 +472,45 @@ const TREE_EDGES_DATA = [
 ];
 
 /* ─── Auto-Layout Engine (Dagre) ───────────────────────────────────────────── */
-const dagreGraph = new dagre.graphlib.Graph();
-dagreGraph.setDefaultEdgeLabel(() => ({}));
-
+// Always create a FRESH graph per call — reusing a module-level instance causes
+// stale node positions from previous layouts to bleed into the new one.
 const getLayoutedElements = (nodes, edges, direction = 'TB') => {
-  dagreGraph.setGraph({ rankdir: direction, ranksep: 120, nodesep: 70 });
+  const g = new dagre.graphlib.Graph();
+  g.setDefaultEdgeLabel(() => ({}));
+  g.setGraph({ rankdir: direction, ranksep: 180, nodesep: 100 });
 
   nodes.forEach((node) => {
-    dagreGraph.setNode(node.id, { width: node.data.width || 120, height: node.data.height || 40 });
+    g.setNode(node.id, { width: node.data.width || 120, height: node.data.height || 40 });
   });
 
   edges.forEach((edge) => {
-    dagreGraph.setEdge(edge.source, edge.target);
+    g.setEdge(edge.source, edge.target);
   });
 
-  dagre.layout(dagreGraph);
+  dagre.layout(g);
 
-  nodes.forEach((node) => {
-    const nodeWithPosition = dagreGraph.node(node.id);
-    node.position = {
-      x: nodeWithPosition.x - (node.data.width || 120) / 2,
-      y: nodeWithPosition.y - (node.data.height || 40) / 2,
+  const layoutedNodes = nodes.map((node) => {
+    const pos = g.node(node.id);
+    return {
+      ...node,
+      position: {
+        x: pos.x - (node.data.width || 120) / 2,
+        y: pos.y - (node.data.height || 40) / 2,
+      },
     };
   });
 
-  return { nodes, edges };
+  return { nodes: layoutedNodes, edges };
 };
 
-/* ─── Convert to React Flow format ─────────────────────────────────────────── */
-const RF_NODES = TREE_NODE_DATA.map(n => {
+/* ─── Convert to React Flow format + run Dagre layout on seed data ────────── */
+// Build raw nodes first (position: {x:0,y:0} — Dagre will overwrite these)
+const _RAW_RF_NODES = TREE_NODE_DATA.map(n => {
   const sz = NODE_SIZES[n.type];
   return {
     id: n.id,
     type: "neobrutalist",
-    position: { x: n.x, y: n.y },
+    position: { x: 0, y: 0 },
     data: {
       label: n.label,
       color: n.color,
@@ -518,13 +524,16 @@ const RF_NODES = TREE_NODE_DATA.map(n => {
   };
 });
 
-const RF_EDGES = TREE_EDGES_DATA.map(([source, target], i) => ({
+const _RAW_RF_EDGES = TREE_EDGES_DATA.map(([source, target]) => ({
   id: `e-${source}-${target}`,
   source,
   target,
-  type: "smoothstep",
+  type: "step",
   style: { stroke: "#000", strokeWidth: 3 },
 }));
+
+// Run the seed data through Dagre so the initial render is already laid out
+const { nodes: RF_NODES, edges: RF_EDGES } = getLayoutedElements(_RAW_RF_NODES, _RAW_RF_EDGES);
 
 /* ─── Neobrutalist Node Component ───────────────────────────────────────────── */
 function NeobrutalistNode({ data, selected }) {
@@ -611,8 +620,7 @@ function SkillTreePanel({ selectedNode, setSelectedNode, onTreeUpdate }) {
           onNodeClick={onNodeClick}
           nodeTypes={nodeTypes}
           fitView
-          fitViewOptions={{ padding: 0.2 }}
-          minZoom={0.2}
+          fitViewOptions={{ padding: 0.4 }}
           maxZoom={2}
           proOptions={{ hideAttribution: true }}
         >
@@ -847,7 +855,7 @@ export default function DashboardPage() {
           id:     edge.id ?? `e-${edge.source}-${edge.target}-${i}`,
           source: String(edge.source),
           target: String(edge.target),
-          type:   "smoothstep",
+          type:   "step",
           style:  { stroke: "#000", strokeWidth: 3 },
         }));
 
@@ -858,7 +866,7 @@ export default function DashboardPage() {
         setEdges(layoutedEdges);
 
         // Re-fit the viewport after a tick to let React Flow measure the new nodes
-        setTimeout(() => fitView({ duration: 500, padding: 0.2 }), 50);
+        setTimeout(() => fitView({ duration: 500, padding: 0.4 }), 50);
       }
 
       // ── Step 8: success message ──
