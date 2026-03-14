@@ -206,7 +206,7 @@ function Marquee() {
 }
 
 /* ─── Main ─────────────────────────────────────────────────────────────────── */
-export default function LandingPage({ onLoginClick }) {
+export default function LandingPage({ onLoginClick, onStartClick }) {
   const [dragging, setDragging] = useState(false);
   const [tick, setTick] = useState(0);
 
@@ -274,11 +274,6 @@ export default function LandingPage({ onLoginClick }) {
         <div className="hero-grid">
           {/* Left col */}
           <div>
-            <div style={{display:"inline-flex", alignItems:"center", border:"4px solid #000", background:"#FF6B9D", padding:"4px 14px", marginBottom:24, boxShadow:"4px 4px 0 #000"}}>
-              <span className="mno" style={{fontWeight:700, fontSize:13, letterSpacing:".12em"}}>
-                🏆 HACKATHON PROJECT 2025
-              </span>
-            </div>
 
             <h1 className="bb" style={{fontSize:"clamp(48px,6.5vw,88px)", lineHeight:.95, letterSpacing:".02em", color:"#000", marginBottom:8}}>
               {headline}<span className="blink" style={{color:"#00E5FF"}}>_</span>
@@ -291,11 +286,11 @@ export default function LandingPage({ onLoginClick }) {
             </p>
 
             <div style={{display:"flex", gap:16, flexWrap:"wrap"}}>
-              <button className="btn" style={{fontSize:22, padding:"14px 28px", background:"#00E5FF", boxShadow:"8px 8px 0 #000"}}>
+              <button className="btn" style={{fontSize:22, padding:"14px 28px", background:"#00E5FF", boxShadow:"8px 8px 0 #000"}} onClick={onStartClick}>
                 <MousePointer size={20} strokeWidth={3}/>
                 UPLOAD SYLLABUS NOW
               </button>
-              <button className="btn" style={{fontSize:22, padding:"14px 22px", background:"#f4f4f0", boxShadow:"8px 8px 0 #000"}}>
+              <button className="btn" style={{fontSize:22, padding:"14px 22px", background:"#f4f4f0", boxShadow:"8px 8px 0 #000"}} onClick={onStartClick}>
                 SEE DEMO <ArrowRight size={18} strokeWidth={3}/>
               </button>
             </div>
@@ -409,6 +404,7 @@ export default function LandingPage({ onLoginClick }) {
 
           <div
             className={dragging ? "dz drag" : "dz"}
+            onClick={onStartClick}
             onDragOver={e=>{e.preventDefault();setDragging(true)}}
             onDragLeave={()=>setDragging(false)}
             onDrop={e=>{e.preventDefault();setDragging(false)}}
@@ -427,7 +423,7 @@ export default function LandingPage({ onLoginClick }) {
             </p>
           </div>
 
-          <button className="btn" style={{marginTop:40, fontSize:26, padding:"18px 48px", background:"#000", color:"#00E5FF", boxShadow:"10px 10px 0 #FFAB00"}}>
+          <button className="btn" style={{marginTop:40, fontSize:26, padding:"18px 48px", background:"#000", color:"#00E5FF", boxShadow:"10px 10px 0 #FFAB00"}} onClick={onStartClick}>
             GENERATE MY SKILL TREE →
           </button>
         </div>
@@ -437,9 +433,6 @@ export default function LandingPage({ onLoginClick }) {
           <div className="foot-inner">
             <span className="bb" style={{fontSize:24, letterSpacing:".08em"}}>
               SKILLBRIDGE <span style={{color:"#00E5FF"}}>AI</span>
-              <span className="mno" style={{fontSize:11, fontWeight:700, color:"#555", marginLeft:12}}>
-                BUILT AT HACKATHON 2025
-              </span>
             </span>
             <div style={{display:"flex", gap:24, alignItems:"center"}}>
               {["PRIVACY","TERMS"].map(l=>(

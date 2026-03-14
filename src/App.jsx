@@ -5,7 +5,12 @@ import DashboardPage from "./Pages/MainPage";
 
 function LandingWithNav() {
   const navigate = useNavigate();
-  return <LandingPage onLoginClick={() => navigate("/login")} />;
+  return (
+    <LandingPage 
+      onLoginClick={() => navigate("/login")} 
+      onStartClick={() => navigate("/dashboard")} 
+    />
+  );
 }
 
 function LoginWithNav() {
